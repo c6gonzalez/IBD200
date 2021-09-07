@@ -1,0 +1,725 @@
+---
+title: "multi-omics feature set generator"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(dplyr)
+library(imputeTS)
+library(EFS)
+library(tidyr)
+library(plyr)
+```
+
+read in data (pasted)
+```{r}
+all_data = read.csv("all_data_and_min_meta.csv")
+```
+
+subset data
+```{r}
+train_data = subset(all_data, Split_Group == "train")
+testing_data = subset(all_data, Split_Group == "test")
+```
+
+
+Make metadata categories for training
+```{r}
+SES_score = train_data$SES_CD_Score
+SES_group = train_data$SES_group
+Ulcer_group = train_data$Ulcer_group
+Hist_loc = train_data$Historic_location
+active_loc = train_data$Active_Location
+activity_level = train_data$Activity_level
+diagnosis = train_data$Diagnosis
+IBDGroup = train_data$Study_group
+samples = train_data$OTU_ID
+```
+
+
+Make metadata categories for testing subset
+```{r}
+IBD_testing_samples = testing_data$OTU_ID
+
+CDvUC_testing_samples = subset(testing_data, Diagnosis == "CD" | Diagnosis == "UC")
+CDvUC_testing_samples = CDvUC_testing_samples$OTU_ID
+
+UC_testing_samples = subset(testing_data, Diagnosis == "UC")
+CDCol_testing_samples = subset(testing_data, Active_Location == "colonic")
+CDColvUC_testing_samples = rbind(UC_testing_samples, CDCol_testing_samples)
+CDColvUC_testing_samples = CDColvUC_testing_samples$OTU_ID
+
+CDil_testing_samples = subset(testing_data, Active_Location == "ileal")
+CDilvUC_testing_samples = rbind(UC_testing_samples, CDil_testing_samples)
+CDilvUC_testing_samples = CDilvUC_testing_samples$OTU_ID
+
+
+CDUlcer_testing_samples = subset(testing_data, Ulcer_group == "rem_mild" | Ulcer_group == "mod_sev")
+CDUlcer_testing_samples = CDUlcer_testing_samples$OTU_ID
+
+CD_CVIC_testing_samples = subset(testing_data, Active_Location == "colonic" | Active_Location == "ileocolonic")
+CD_CVIC_testing_samples = CD_CVIC_testing_samples$OTU_ID
+
+CD_IVC_testing_samples = subset(testing_data, Active_Location == "ileal" | Active_Location == "colonic")
+CD_IVC_testing_samples = CD_IVC_testing_samples$OTU_ID
+
+CD_IVIC_testing_samples = subset(testing_data, Active_Location == "ileal" | Active_Location == "ileocolonic")
+CD_IVIC_testing_samples = CD_IVIC_testing_samples$OTU_ID
+
+CD_NVIC_testing_samples = subset(testing_data, Active_Location == "none" | Active_Location == "ileocolonic")
+CD_NVIC_testing_samples = CD_NVIC_testing_samples$OTU_ID
+
+CD_NVI_testing_samples = subset(testing_data, Active_Location == "none" | Active_Location == "ileal")
+CD_NVI_testing_samples = CD_NVI_testing_samples$OTU_ID
+
+CD_NVC_testing_samples = subset(testing_data, Active_Location == "none" | Active_Location == "colonic")
+CD_NVC_testing_samples = CD_NVC_testing_samples$OTU_ID
+
+SES_MIvMS_testing_samples = subset(testing_data, SES_group == "inactive_mild" | SES_group == "moderate_severe")
+SES_MIvMS_testing_samples = SES_MIvMS_testing_samples$OTU_ID
+
+```
+
+Make map of samples in each training subset
+```{r}
+##main data subsets
+TRAIN_CD_data = subset(train_data, Diagnosis == "CD")
+TRAIN_IBD_data = subset(train_data, Study_group == "IBD")
+
+## CD v UC
+TRAIN_CDvUC_samples = TRAIN_IBD_data$OTU_ID
+
+
+## train location sample vectors
+TRAIN_NVI_data = subset(TRAIN_CD_data, Active_Location == "none" | Active_Location == "ileal")
+TRAIN_NVI_samples = TRAIN_NVI_data$OTU_ID
+
+TRAIN_NVIC_data = subset(TRAIN_CD_data, Active_Location == "none" | Active_Location == "ileocolonic")
+TRAIN_NVIC_samples = TRAIN_NVIC_data$OTU_ID
+
+TRAIN_NVC_data = subset(TRAIN_CD_data, Active_Location == "none" | Active_Location == "colonic")
+TRAIN_NVC_samples = TRAIN_NVC_data$OTU_ID
+
+TRAIN_IVC_data = subset(TRAIN_CD_data, Active_Location == "ileal" | Active_Location == "colonic")
+TRAIN_IVC_samples = TRAIN_IVC_data$OTU_ID
+
+TRAIN_IVIC_data = subset(TRAIN_CD_data, Active_Location == "ileal" | Active_Location == "ileocolonic")
+TRAIN_IVIC_samples = TRAIN_IVIC_data$OTU_ID
+
+TRAIN_CVIC_data = subset(TRAIN_CD_data, Active_Location == "colonic" | Active_Location == "ileocolonic")
+TRAIN_CVIC_samples = TRAIN_CVIC_data$OTU_ID
+
+
+## train SES subsets
+TRAIN_SES_MIvMS_data = subset(TRAIN_CD_data, SES_group == "inactive_mild" | SES_group == "moderate_severe")
+TRAIN_SES_MIvMS_samples = TRAIN_SES_MIvMS_data$OTU_ID
+
+## train ulcer group
+TRAIN_ULCER = TRAIN_CD_data
+TRAIN_ULCER_samples = TRAIN_ULCER$OTU_ID
+
+## CD colonic vs UC
+CD_colonic = subset(TRAIN_CD_data, Active_Location == "colonic")
+UC = subset(TRAIN_IBD_data, Diagnosis == "UC")
+CDCol_v_UC = rbind(CD_colonic,UC)
+CDCol_v_UC_samples = CDCol_v_UC$OTU_ID
+
+## CD ileal vs UC
+CD_ileal = subset(TRAIN_CD_data, Active_Location == "ileal")
+CDil_v_UC = rbind(CD_ileal,UC)
+CDil_v_UC_samples = CDil_v_UC$OTU_ID
+```
+
+make data frame
+```{r}
+df = train_data[,9:length(train_data)]
+df2 = testing_data[,9:length(testing_data)]
+```
+
+Healthy vs IBD comparison
+```{r}
+## main data set
+IBDCompare = cbind(Group = IBDGroup, df)
+## recode data
+IBDCompare$Group <- as.numeric(revalue(IBDCompare$Group, c("IBD"=1, "HC"=0)))
+
+```
+
+CD vs UC subset, recoding diagnosis
+```{r}
+#make DFs
+CDvUC = cbind(diagnosis, df)
+
+## subset IBD only samples
+CDvUC = subset(CDvUC, diagnosis == "CD" | diagnosis == "UC")
+
+## recode data
+CDvUC$diagnosis = as.numeric(revalue(CDvUC$diagnosis, c("CD" = 1, "UC" = 0)))
+
+```
+
+CD current location subset
+```{r}
+## make df
+CDOnly = cbind(diagnosis, active_loc, df)
+
+## subset out CD only
+CDOnly = subset(CDOnly, diagnosis == "CD")
+
+## subset of locations, binary comparisons
+CD_NVI = subset(CDOnly, CDOnly$active_loc == "none" | CDOnly$active_loc == "ileal")
+CD_NVC = subset(CDOnly, CDOnly$active_loc == "none" | CDOnly$active_loc == "colonic")
+CD_NVIC = subset(CDOnly, CDOnly$active_loc == "none" | CDOnly$active_loc == "ileocolonic")
+CD_IVC = subset(CDOnly, CDOnly$active_loc == "ileal" | CDOnly$active_loc == "colonic")
+CD_IVIC = subset(CDOnly, CDOnly$active_loc == "ileal" | CDOnly$active_loc == "ileocolonic")
+CD_CVIC = subset(CDOnly, CDOnly$active_loc == "colonic" | CDOnly$active_loc == "ileocolonic")
+
+## remove diagnosis column
+CD_NVI$diagnosis = NULL
+CD_NVC$diagnosis = NULL
+CD_NVIC$diagnosis = NULL
+CD_IVC$diagnosis = NULL
+CD_IVIC$diagnosis = NULL
+CD_CVIC$diagnosis = NULL
+
+## recode location
+CD_NVI$active_loc = as.numeric(revalue(CD_NVI$active_loc, c("none" = 0, "ileal" = 1)))
+CD_NVC$active_loc = as.numeric(revalue(CD_NVC$active_loc, c("none" = 0, "colonic" = 1)))
+CD_NVIC$active_loc = as.numeric(revalue(CD_NVIC$active_loc, c("none" = 0, "ileocolonic" = 1)))
+CD_IVC$active_loc = as.numeric(revalue(CD_IVC$active_loc, c("ileal" = 0, "colonic" = 1)))
+CD_IVIC$active_loc = as.numeric(revalue(CD_IVIC$active_loc, c("ileal" = 0, "ileocolonic" = 1)))
+CD_CVIC$active_loc = as.numeric(revalue(CD_CVIC$active_loc, c("colonic" = 0, "ileocolonic" = 1)))
+
+```
+
+Ulcer subsets
+```{r}
+## make df
+CDOnlyUlcer = cbind(diagnosis, Ulcer_group, df)
+CDOnlyUlcer = subset(CDOnlyUlcer, CDOnlyUlcer$diagnosis == "CD")
+CDOnlyUlcer = subset(CDOnlyUlcer, CDOnlyUlcer$Ulcer_group == "rem_mild" | CDOnlyUlcer$Ulcer_group == "mod_sev")
+CDOnlyUlcer$diagnosis = NULL
+
+CDOnlyUlcer$Ulcer_group = as.numeric(revalue(CDOnlyUlcer$Ulcer_group, c("rem_mild" = 0, "mod_sev" = 1)))
+
+```
+
+SES Group subsets
+```{r}
+SES_data = cbind(diagnosis, SES_group, df)
+SES_MIvMS = subset(SES_data, SES_data$SES_group == "inactive_mild" | SES_data$SES_group == "moderate_severe")
+SES_MIvMS$diagnosis = NULL
+SES_MIvMS$SES_group = as.numeric(revalue(SES_MIvMS$SES_group, c("inactive_mild" = 0, "moderate_severe" = 1)))
+```
+
+
+```{r}
+CDColvUC = cbind(diagnosis, active_loc, df)
+CDColvUC = subset(CDColvUC, diagnosis == "UC" | active_loc == "colonic")
+Colon = ifelse(CDColvUC$diagnosis == "UC", 0,1)
+CDColvUC = cbind(Colon, CDColvUC)
+
+CDColvUC$diagnosis = NULL
+CDColvUC$active_loc = NULL
+
+CDilvUC = cbind(diagnosis, active_loc, df)
+CDilvUC = subset(CDilvUC, diagnosis == "UC" | active_loc == "ileal")
+ileal = ifelse(CDilvUC$diagnosis == "UC", 0,1)
+CDilvUC = cbind(ileal, CDilvUC)
+
+CDilvUC$diagnosis = NULL
+CDilvUC$active_loc = NULL
+```
+
+
+
+cant get EFS loop to work and don't have time, brute force!
+```{r}
+##IBD
+IBDvHC_EFS = ensemble_fs(IBDCompare, 1, runs = 10)
+
+##CDvUC
+CDvUC_EFS = ensemble_fs(CDvUC, 1, runs = 10)
+
+##CD_location
+CD_NVI_EFS = ensemble_fs(CD_NVI, 1, runs = 10)
+CD_NVC_EFS = ensemble_fs(CD_NVC, 1, runs = 10)
+CD_NVIC_EFS = ensemble_fs(CD_NVIC, 1, runs = 10)
+CD_IVC_EFS = ensemble_fs(CD_IVC, 1, runs = 10)
+CD_IVIC_EFS = ensemble_fs(CD_IVIC, 1, runs = 10)
+CD_CVIC_EFS = ensemble_fs(CD_CVIC, 1, runs = 10)
+
+##CD_SES_severity
+SES_MIvMS_EFS = ensemble_fs(SES_MIvMS, 1, runs = 10)
+
+##colonic_CD_V_UC
+CDColvUC_EFS = ensemble_fs(CDColvUC, 1, runs = 10)
+
+## ileal CD vs UC
+CDilvUC_EFS = ensemble_fs(CDilvUC, 1, runs = 10)
+
+## CD ulcer
+CDOnlyUlcer_EFS = ensemble_fs(CDOnlyUlcer, 1, runs = 10)
+```
+
+```{r}
+##gene_names = cbind(Gene_name = protein_annotation$Protein.names, protein = protein_annotation$queryID)
+##gene_names = as.data.frame(gene_names)
+```
+
+
+```{r}
+EFS_level = 0.4
+```
+
+
+```{r}
+IBDvHC_EFS_score_sum = colSums(IBDvHC_EFS) # add sum of scores
+IBDvHC_EFS_protsums = rbind(IBDvHC_EFS, IBDvHC_EFS_score_sum) # attach summed score for filtering in future step
+## rownames(IBDvHC_EFS_protsums)[rownames(IBDvHC_EFS_protsums) == "9"] = "SUM" #change 9 column to "SUM"
+IBDvHC_EFS_protsumsT = t(IBDvHC_EFS_protsums) # transform DF to correct orientation (metrics as cols, proteins as rows)
+IBDvHC_EFS_protsumsT = as.data.frame(IBDvHC_EFS_protsumsT) # made data frame
+IBDvHC_EFS_prot25 = subset(IBDvHC_EFS_protsumsT, IBDvHC_EFS_protsumsT$IBDvHC_EFS_score_sum > EFS_level) #subset to just proteins whos summed scores are above EFS_level
+IBDvHC_EFS_prot25$SUM = NULL #remove SUM column
+IBDvHC_EFS_prot25$protein = rownames(IBDvHC_EFS_prot25) #add protein column if not showing up
+IBDvHC_EFS_pro25tLong = gather(IBDvHC_EFS_prot25, key = metric, value = measurement, 1:8, factor_key = T) #longform data
+## IBDvHC_EFS_pro25tLong = merge(gene_names, IBDvHC_EFS_pro25tLong) #merge gene_names
+ggplot(IBDvHC_EFS_pro25tLong, aes(x = reorder(protein, measurement), y = measurement, fill = metric)) + geom_bar(stat = "identity") + theme_bw() + coord_flip() #plot with bargraph
+```
+
+
+```{r}
+CDvUC_EFS_score_sum = colSums(CDvUC_EFS) # add sum of scores
+CDvUC_EFS_protsums = rbind(CDvUC_EFS, CDvUC_EFS_score_sum) # attach summed score for filtering in future step
+## rownames(CDvUC_EFS_protsums)[rownames(CDvUC_EFS_protsums) == "9"] = "SUM" #change 9 column to "SUM"
+CDvUC_EFS_protsumsT = t(CDvUC_EFS_protsums) # transform DF to correct orientation (metrics as cols, proteins as rows)
+CDvUC_EFS_protsumsT = as.data.frame(CDvUC_EFS_protsumsT) # made data frame
+CDvUC_EFS_prot25 = subset(CDvUC_EFS_protsumsT, CDvUC_EFS_protsumsT$CDvUC_EFS_score_sum > EFS_level) #subset to just proteins whos summed scores are above EFS_level
+CDvUC_EFS_prot25$SUM = NULL #remove SUM column
+CDvUC_EFS_prot25$protein = rownames(CDvUC_EFS_prot25) #add protein column if not showing up
+CDvUC_EFS_pro25tLong = gather(CDvUC_EFS_prot25, key = metric, value = measurement, 1:8, factor_key = T) #longform data
+## CDvUC_EFS_pro25tLong = merge(gene_names, CDvUC_EFS_pro25tLong) #merge gene_names
+ggplot(CDvUC_EFS_pro25tLong, aes(x = reorder(protein, measurement), y = measurement, fill = metric)) + geom_bar(stat = "identity") + theme_bw() + coord_flip() #plot with bargraph
+```
+
+```{r}
+CD_CVIC_EFS_score_sum = colSums(CD_CVIC_EFS) # add sum of scores
+CD_CVIC_EFS_protsums = rbind(CD_CVIC_EFS, CD_CVIC_EFS_score_sum) # attach summed score for filtering in future step
+rownames(CD_CVIC_EFS_protsums)[rownames(CD_CVIC_EFS_protsums) == "9"] = "SUM" #change 9 column to "SUM"
+CD_CVIC_EFS_protsumsT = t(CD_CVIC_EFS_protsums) # transform DF to correct orientation (metrics as cols, proteins as rows)
+CD_CVIC_EFS_protsumsT = as.data.frame(CD_CVIC_EFS_protsumsT) # made data frame
+CD_CVIC_EFS_prot25 = subset(CD_CVIC_EFS_protsumsT, CD_CVIC_EFS_protsumsT$CD_CVIC_EFS_score_sum > EFS_level) #subset to just proteins whos summed scores are above EFS_level
+CD_CVIC_EFS_prot25$SUM = NULL #remove SUM column
+CD_CVIC_EFS_prot25$protein = rownames(CD_CVIC_EFS_prot25) #add protein column if not showing up
+CD_CVIC_EFS_pro25tLong = gather(CD_CVIC_EFS_prot25, key = metric, value = measurement, 1:8, factor_key = T) #longform data
+## CD_CVIC_EFS_pro25tLong = merge(gene_names, CD_CVIC_EFS_pro25tLong) #merge gene_names
+ggplot(CD_CVIC_EFS_pro25tLong, aes(x = reorder(protein, measurement), y = measurement, fill = metric)) + geom_bar(stat = "identity") + theme_bw() + coord_flip() #plot with bargraph
+```
+
+```{r}
+CD_IVC_EFS_score_sum = colSums(CD_IVC_EFS) # add sum of scores
+CD_IVC_EFS_protsums = rbind(CD_IVC_EFS, CD_IVC_EFS_score_sum) # attach summed score for filtering in future step
+rownames(CD_IVC_EFS_protsums)[rownames(CD_IVC_EFS_protsums) == "9"] = "SUM" #change 9 column to "SUM"
+CD_IVC_EFS_protsumsT = t(CD_IVC_EFS_protsums) # transform DF to correct orientation (metrics as cols, proteins as rows)
+CD_IVC_EFS_protsumsT = as.data.frame(CD_IVC_EFS_protsumsT) # made data frame
+CD_IVC_EFS_prot25 = subset(CD_IVC_EFS_protsumsT, CD_IVC_EFS_protsumsT$CD_IVC_EFS_score_sum > EFS_level) #subset to just proteins whos summed scores are above EFS_level
+CD_IVC_EFS_prot25$SUM = NULL #remove SUM column
+CD_IVC_EFS_prot25$protein = rownames(CD_IVC_EFS_prot25) #add protein column if not showing up
+CD_IVC_EFS_pro25tLong = gather(CD_IVC_EFS_prot25, key = metric, value = measurement, 1:8, factor_key = T) #longform data
+## CD_IVC_EFS_pro25tLong = merge(gene_names, CD_IVC_EFS_pro25tLong) #merge gene_names
+ggplot(CD_IVC_EFS_pro25tLong, aes(x = reorder(protein, measurement), y = measurement, fill = metric)) + geom_bar(stat = "identity") + theme_bw() + coord_flip() #plot with bargraph
+```
+
+```{r}
+CD_IVIC_EFS_score_sum = colSums(CD_IVIC_EFS) # add sum of scores
+CD_IVIC_EFS_protsums = rbind(CD_IVIC_EFS, CD_IVIC_EFS_score_sum) # attach summed score for filtering in future step
+rownames(CD_IVIC_EFS_protsums)[rownames(CD_IVIC_EFS_protsums) == "9"] = "SUM" #change 9 column to "SUM"
+CD_IVIC_EFS_protsumsT = t(CD_IVIC_EFS_protsums) # transform DF to correct orientation (metrics as cols, proteins as rows)
+CD_IVIC_EFS_protsumsT = as.data.frame(CD_IVIC_EFS_protsumsT) # made data frame
+CD_IVIC_EFS_prot25 = subset(CD_IVIC_EFS_protsumsT, CD_IVIC_EFS_protsumsT$CD_IVIC_EFS_score_sum > EFS_level) #subset to just proteins whos summed scores are above EFS_level
+CD_IVIC_EFS_prot25$SUM = NULL #remove SUM column
+CD_IVIC_EFS_prot25$protein = rownames(CD_IVIC_EFS_prot25) #add protein column if not showing up
+CD_IVIC_EFS_pro25tLong = gather(CD_IVIC_EFS_prot25, key = metric, value = measurement, 1:8, factor_key = T) #longform data
+## CD_IVIC_EFS_pro25tLong = merge(gene_names, CD_IVIC_EFS_pro25tLong) #merge gene_names
+ggplot(CD_IVIC_EFS_pro25tLong, aes(x = reorder(protein, measurement), y = measurement, fill = metric)) + geom_bar(stat = "identity") + theme_bw() + coord_flip() #plot with bargraph
+```
+
+```{r}
+CD_NVC_EFS_score_sum = colSums(CD_NVC_EFS) # add sum of scores
+CD_NVC_EFS_protsums = rbind(CD_NVC_EFS, CD_NVC_EFS_score_sum) # attach summed score for filtering in future step
+rownames(CD_NVC_EFS_protsums)[rownames(CD_NVC_EFS_protsums) == "9"] = "SUM" #change 9 column to "SUM"
+CD_NVC_EFS_protsumsT = t(CD_NVC_EFS_protsums) # transform DF to correct orientation (metrics as cols, proteins as rows)
+CD_NVC_EFS_protsumsT = as.data.frame(CD_NVC_EFS_protsumsT) # made data frame
+CD_NVC_EFS_prot25 = subset(CD_NVC_EFS_protsumsT, CD_NVC_EFS_protsumsT$CD_NVC_EFS_score_sum > EFS_level) #subset to just proteins whos summed scores are above EFS_level
+CD_NVC_EFS_prot25$SUM = NULL #remove SUM column
+CD_NVC_EFS_prot25$protein = rownames(CD_NVC_EFS_prot25) #add protein column if not showing up
+CD_NVC_EFS_pro25tLong = gather(CD_NVC_EFS_prot25, key = metric, value = measurement, 1:8, factor_key = T) #longform data
+## CD_NVC_EFS_pro25tLong = merge(gene_names, CD_NVC_EFS_pro25tLong) #merge gene_names
+ggplot(CD_NVC_EFS_pro25tLong, aes(x = reorder(protein, measurement), y = measurement, fill = metric)) + geom_bar(stat = "identity") + theme_bw() + coord_flip() #plot with bargraph
+```
+
+```{r}
+CD_NVI_EFS_score_sum = colSums(CD_NVI_EFS) # add sum of scores
+CD_NVI_EFS_protsums = rbind(CD_NVI_EFS, CD_NVI_EFS_score_sum) # attach summed score for filtering in future step
+rownames(CD_NVI_EFS_protsums)[rownames(CD_NVI_EFS_protsums) == "9"] = "SUM" #change 9 column to "SUM"
+CD_NVI_EFS_protsumsT = t(CD_NVI_EFS_protsums) # transform DF to correct orientation (metrics as cols, proteins as rows)
+CD_NVI_EFS_protsumsT = as.data.frame(CD_NVI_EFS_protsumsT) # made data frame
+CD_NVI_EFS_prot25 = subset(CD_NVI_EFS_protsumsT, CD_NVI_EFS_protsumsT$CD_NVI_EFS_score_sum > EFS_level) #subset to just proteins whos summed scores are above EFS_level
+CD_NVI_EFS_prot25$SUM = NULL #remove SUM column
+CD_NVI_EFS_prot25$protein = rownames(CD_NVI_EFS_prot25) #add protein column if not showing up
+CD_NVI_EFS_pro25tLong = gather(CD_NVI_EFS_prot25, key = metric, value = measurement, 1:8, factor_key = T) #longform data
+## CD_NVI_EFS_pro25tLong = merge(gene_names, CD_NVI_EFS_pro25tLong) #merge gene_names
+ggplot(CD_NVI_EFS_pro25tLong, aes(x = reorder(protein, measurement), y = measurement, fill = metric)) + geom_bar(stat = "identity") + theme_bw() + coord_flip() #plot with bargraph
+```
+
+```{r}
+CD_NVIC_EFS_score_sum = colSums(CD_NVIC_EFS) # add sum of scores
+CD_NVIC_EFS_protsums = rbind(CD_NVIC_EFS, CD_NVIC_EFS_score_sum) # attach summed score for filtering in future step
+rownames(CD_NVIC_EFS_protsums)[rownames(CD_NVIC_EFS_protsums) == "9"] = "SUM" #change 9 column to "SUM"
+CD_NVIC_EFS_protsumsT = t(CD_NVIC_EFS_protsums) # transform DF to correct orientation (metrics as cols, proteins as rows)
+CD_NVIC_EFS_protsumsT = as.data.frame(CD_NVIC_EFS_protsumsT) # made data frame
+CD_NVIC_EFS_prot25 = subset(CD_NVIC_EFS_protsumsT, CD_NVIC_EFS_protsumsT$CD_NVIC_EFS_score_sum > EFS_level) #subset to just proteins whos summed scores are above EFS_level
+CD_NVIC_EFS_prot25$SUM = NULL #remove SUM column
+CD_NVIC_EFS_prot25$protein = rownames(CD_NVIC_EFS_prot25) #add protein column if not showing up
+CD_NVIC_EFS_pro25tLong = gather(CD_NVIC_EFS_prot25, key = metric, value = measurement, 1:8, factor_key = T) #longform data
+## CD_NVIC_EFS_pro25tLong = merge(gene_names, CD_NVIC_EFS_pro25tLong) #merge gene_names
+ggplot(CD_NVIC_EFS_pro25tLong, aes(x = reorder(protein, measurement), y = measurement, fill = metric)) + geom_bar(stat = "identity") + theme_bw() + coord_flip() #plot with bargraph
+```
+
+
+```{r}
+SES_MIvMS_EFS_score_sum = colSums(SES_MIvMS_EFS) # add sum of scores
+SES_MIvMS_EFS_protsums = rbind(SES_MIvMS_EFS, SES_MIvMS_EFS_score_sum) # attach summed score for filtering in future step
+rownames(SES_MIvMS_EFS_protsums)[rownames(SES_MIvMS_EFS_protsums) == "9"] = "SUM" #change 9 column to "SUM"
+SES_MIvMS_EFS_protsumsT = t(SES_MIvMS_EFS_protsums) # transform DF to correct orientation (metrics as cols, proteins as rows)
+SES_MIvMS_EFS_protsumsT = as.data.frame(SES_MIvMS_EFS_protsumsT) # made data frame
+SES_MIvMS_EFS_prot25 = subset(SES_MIvMS_EFS_protsumsT, SES_MIvMS_EFS_protsumsT$SES_MIvMS_EFS_score_sum > EFS_level) #subset to just proteins whos summed scores are above EFS_level
+SES_MIvMS_EFS_prot25$SUM = NULL #remove SUM column
+SES_MIvMS_EFS_prot25$protein = rownames(SES_MIvMS_EFS_prot25) #add protein column if not showing up
+SES_MIvMS_EFS_pro25tLong = gather(SES_MIvMS_EFS_prot25, key = metric, value = measurement, 1:8, factor_key = T) #longform data
+## CD_NVIC_EFS_pro25tLong = merge(gene_names, CD_NVIC_EFS_pro25tLong) #merge gene_names
+ggplot(SES_MIvMS_EFS_pro25tLong, aes(x = reorder(protein, measurement), y = measurement, fill = metric)) + geom_bar(stat = "identity") + theme_bw() + coord_flip() #plot with bargraph
+```
+
+```{r}
+CDColvUC_EFS_score_sum = colSums(CDColvUC_EFS) # add sum of scores
+CDColvUC_EFS_protsums = rbind(CDColvUC_EFS, CDColvUC_EFS_score_sum) # attach summed score for filtering in future step
+rownames(CDColvUC_EFS_protsums)[rownames(CDColvUC_EFS_protsums) == "9"] = "SUM" #change 9 column to "SUM"
+CDColvUC_EFS_protsumsT = t(CDColvUC_EFS_protsums) # transform DF to correct orientation (metrics as cols, proteins as rows)
+CDColvUC_EFS_protsumsT = as.data.frame(CDColvUC_EFS_protsumsT) # made data frame
+CDColvUC_EFS_prot25 = subset(CDColvUC_EFS_protsumsT, CDColvUC_EFS_protsumsT$CDColvUC_EFS_score_sum > EFS_level) #subset to just proteins whos summed scores are above EFS_level
+CDColvUC_EFS_prot25$SUM = NULL #remove SUM column
+CDColvUC_EFS_prot25$protein = rownames(CDColvUC_EFS_prot25) #add protein column if not showing up
+CDColvUC_EFS_pro25tLong = gather(CDColvUC_EFS_prot25, key = metric, value = measurement, 1:8, factor_key = T) #longform data
+## CD_NVIC_EFS_pro25tLong = merge(gene_names, CD_NVIC_EFS_pro25tLong) #merge gene_names
+ggplot(CDColvUC_EFS_pro25tLong, aes(x = reorder(protein, measurement), y = measurement, fill = metric)) + geom_bar(stat = "identity") + theme_bw() + coord_flip() #plot with bargraph
+```
+
+```{r}
+CDilvUC_EFS_score_sum = colSums(CDilvUC_EFS) # add sum of scores
+CDilvUC_EFS_protsums = rbind(CDilvUC_EFS, CDilvUC_EFS_score_sum) # attach summed score for filtering in future step
+rownames(CDilvUC_EFS_protsums)[rownames(CDilvUC_EFS_protsums) == "9"] = "SUM" #change 9 column to "SUM"
+CDilvUC_EFS_protsumsT = t(CDilvUC_EFS_protsums) # transform DF to correct orientation (metrics as cols, proteins as rows)
+CDilvUC_EFS_protsumsT = as.data.frame(CDilvUC_EFS_protsumsT) # made data frame
+CDilvUC_EFS_prot25 = subset(CDilvUC_EFS_protsumsT, CDilvUC_EFS_protsumsT$CDilvUC_EFS_score_sum > EFS_level) #subset to just proteins whos summed scores are above EFS_level
+CDilvUC_EFS_prot25$SUM = NULL #remove SUM column
+CDilvUC_EFS_prot25$protein = rownames(CDilvUC_EFS_prot25) #add protein column if not showing up
+CDilvUC_EFS_pro25tLong = gather(CDilvUC_EFS_prot25, key = metric, value = measurement, 1:8, factor_key = T) #longform data
+## CD_NVIC_EFS_pro25tLong = merge(gene_names, CD_NVIC_EFS_pro25tLong) #merge gene_names
+ggplot(CDilvUC_EFS_pro25tLong, aes(x = reorder(protein, measurement), y = measurement, fill = metric)) + geom_bar(stat = "identity") + theme_bw() + coord_flip() #plot with bargraph
+```
+
+
+
+```{r}
+CDOnlyUlcer_EFS_score_sum = colSums(CDOnlyUlcer_EFS) # add sum of scores
+CDOnlyUlcer_EFS_protsums = rbind(CDOnlyUlcer_EFS, CDOnlyUlcer_EFS_score_sum) # attach summed score for filtering in future step
+rownames(CDOnlyUlcer_EFS_protsums)[rownames(CDOnlyUlcer_EFS_protsums) == "9"] = "SUM" #change 9 column to "SUM"
+CDOnlyUlcer_EFS_protsumsT = t(CDOnlyUlcer_EFS_protsums) # transform DF to correct orientation (metrics as cols, proteins as rows)
+CDOnlyUlcer_EFS_protsumsT = as.data.frame(CDOnlyUlcer_EFS_protsumsT) # made data frame
+CDOnlyUlcer_EFS_prot25 = subset(CDOnlyUlcer_EFS_protsumsT, CDOnlyUlcer_EFS_protsumsT$CDOnlyUlcer_EFS_score_sum > EFS_level) #subset to just proteins whos summed scores are above EFS_level
+CDOnlyUlcer_EFS_prot25$SUM = NULL #remove SUM column
+CDOnlyUlcer_EFS_prot25$protein = rownames(CDOnlyUlcer_EFS_prot25) #add protein column if not showing up
+CDOnlyUlcer_EFS_pro25tLong = gather(CDOnlyUlcer_EFS_prot25, key = metric, value = measurement, 1:8, factor_key = T) #longform data
+## CD_NVIC_EFS_pro25tLong = merge(gene_names, CD_NVIC_EFS_pro25tLong) #merge gene_names
+ggplot(CDOnlyUlcer_EFS_pro25tLong, aes(x = reorder(protein, measurement), y = measurement, fill = metric)) + geom_bar(stat = "identity") + theme_bw() + coord_flip() #plot with bargraph
+```
+
+
+rename column, make unique protein only DF
+```{r}
+IBD_HC_EFS_unique = as.data.frame(unique(IBDvHC_EFS_pro25tLong$protein))
+colnames(IBD_HC_EFS_unique)[colnames(IBD_HC_EFS_unique) == "unique(IBDvHC_EFS_pro25tLong$protein)"] = "Proteins"
+IBD_HC_EFS_unique = c("OTU_ID", "Study_group", IBD_HC_EFS_unique$Proteins)
+
+## CD v UC
+CDvUC_EFS_unique = as.data.frame(unique(CDvUC_EFS_pro25tLong$protein))
+colnames(CDvUC_EFS_unique)[colnames(CDvUC_EFS_unique) == "unique(CDvUC_EFS_pro25tLong$protein)"] = "Proteins"
+CDvUC_EFS_unique = c("OTU_ID","Diagnosis", CDvUC_EFS_unique$Proteins)
+
+## CD location
+CD_CVIC_EFS_unique = as.data.frame(unique(CD_CVIC_EFS_pro25tLong$protein))
+colnames(CD_CVIC_EFS_unique)[colnames(CD_CVIC_EFS_unique) == "unique(CD_CVIC_EFS_pro25tLong$protein)"] = "Proteins"
+CD_CVIC_EFS_unique = c("OTU_ID","Active_Location", CD_CVIC_EFS_unique$Proteins)
+
+CD_IVC_EFS_unique = as.data.frame(unique(CD_IVC_EFS_pro25tLong$protein))
+colnames(CD_IVC_EFS_unique)[colnames(CD_IVC_EFS_unique) == "unique(CD_IVC_EFS_pro25tLong$protein)"] = "Proteins"
+CD_IVC_EFS_unique = c("OTU_ID","Active_Location", CD_IVC_EFS_unique$Proteins)
+
+CD_IVIC_EFS_unique = as.data.frame(unique(CD_IVIC_EFS_pro25tLong$protein))
+colnames(CD_IVIC_EFS_unique)[colnames(CD_IVIC_EFS_unique) == "unique(CD_IVIC_EFS_pro25tLong$protein)"] = "Proteins"
+CD_IVIC_EFS_unique = c("OTU_ID","Active_Location", CD_IVIC_EFS_unique$Proteins)
+
+CD_NVC_EFS_unique = as.data.frame(unique(CD_NVC_EFS_pro25tLong$protein))
+colnames(CD_NVC_EFS_unique)[colnames(CD_NVC_EFS_unique) == "unique(CD_NVC_EFS_pro25tLong$protein)"] = "Proteins"
+CD_NVC_EFS_unique = c("OTU_ID","Active_Location", CD_NVC_EFS_unique$Proteins)
+
+CD_NVI_EFS_unique = as.data.frame(unique(CD_NVI_EFS_pro25tLong$protein))
+colnames(CD_NVI_EFS_unique)[colnames(CD_NVI_EFS_unique) == "unique(CD_NVI_EFS_pro25tLong$protein)"] = "Proteins"
+CD_NVI_EFS_unique = c("OTU_ID","Active_Location", CD_NVI_EFS_unique$Proteins)
+
+CD_NVIC_EFS_unique = as.data.frame(unique(CD_NVIC_EFS_pro25tLong$protein))
+colnames(CD_NVIC_EFS_unique)[colnames(CD_NVIC_EFS_unique) == "unique(CD_NVIC_EFS_pro25tLong$protein)"] = "Proteins"
+CD_NVIC_EFS_unique = c("OTU_ID","Active_Location", CD_NVIC_EFS_unique$Proteins)
+
+##severity
+SES_MIvMS_EFS_unique = as.data.frame(unique(SES_MIvMS_EFS_pro25tLong$protein))
+colnames(SES_MIvMS_EFS_unique)[colnames(SES_MIvMS_EFS_unique) == "unique(SES_MIvMS_EFS_pro25tLong$protein)"] = "Proteins"
+SES_MIvMS_EFS_unique = c("OTU_ID","SES_group", SES_MIvMS_EFS_unique$Proteins)
+
+## ulcer
+CDOnly_ulcer_EFS_unique = as.data.frame(unique(CDOnlyUlcer_EFS_pro25tLong$protein))
+colnames(CDOnly_ulcer_EFS_unique)[colnames(CDOnly_ulcer_EFS_unique) == "unique(CDOnlyUlcer_EFS_pro25tLong$protein)"] = "Proteins"
+CDOnly_ulcer_EFS_unique = c("OTU_ID","Ulcer_group", CDOnly_ulcer_EFS_unique$Proteins)
+
+
+## UC v CD colonic
+CDColvUC_EFS_unique = as.data.frame(unique(CDColvUC_EFS_pro25tLong$protein))
+colnames(CDColvUC_EFS_unique)[colnames(CDColvUC_EFS_unique) == "unique(CDColvUC_EFS_pro25tLong$protein)"] = "Proteins"
+CDColvUC_EFS_unique = c("OTU_ID","Diagnosis", CDColvUC_EFS_unique$Proteins)
+
+
+## UC v CD ileal
+CDilvUC_EFS_unique = as.data.frame(unique(CDilvUC_EFS_pro25tLong$protein))
+colnames(CDilvUC_EFS_unique)[colnames(CDilvUC_EFS_unique) == "unique(CDilvUC_EFS_pro25tLong$protein)"] = "Proteins"
+CDilvUC_EFS_unique = c("OTU_ID","Diagnosis", CDilvUC_EFS_unique$Proteins)
+```
+
+
+```{r}
+## IBDvHC
+## train
+IBDvHC_train_EFS_subset = subset(train_data, select = IBD_HC_EFS_unique)
+rownames(IBDvHC_train_EFS_subset) = samples
+## test
+IBDvHC_test_EFS_subset = subset(testing_data, select = IBD_HC_EFS_unique)
+rownames(IBDvHC_test_EFS_subset) = IBD_testing_samples
+
+## CD v UC
+## train
+CDvUC_train_EFS_subset = subset(train_data, OTU_ID %in% TRAIN_CDvUC_samples)
+CDvUC_train_EFS_subset = subset(CDvUC_train_EFS_subset, select = CDvUC_EFS_unique)
+rownames(CDvUC_train_EFS_subset) = TRAIN_CDvUC_samples
+## test
+CDvUC_test_EFS_subset = subset(testing_data, OTU_ID %in% CDvUC_testing_samples)
+CDvUC_test_EFS_subset = subset(CDvUC_test_EFS_subset, select = CDvUC_EFS_unique)
+rownames(CDvUC_test_EFS_subset) = CDvUC_testing_samples
+
+
+## Severity
+## train
+SES_MIvMS_train_EFS_subset = subset(train_data, OTU_ID %in% TRAIN_SES_MIvMS_samples)
+SES_MIvMS_train_EFS_subset = subset(SES_MIvMS_train_EFS_subset, select = SES_MIvMS_EFS_unique)
+rownames(SES_MIvMS_train_EFS_subset) = TRAIN_SES_MIvMS_samples
+## test
+SES_MIvMS_test_EFS_subset = subset(testing_data, OTU_ID %in% SES_MIvMS_testing_samples)
+SES_MIvMS_test_EFS_subset = subset(SES_MIvMS_test_EFS_subset, select = SES_MIvMS_EFS_unique)
+rownames(SES_MIvMS_test_EFS_subset) = SES_MIvMS_testing_samples
+
+
+## Inflammatory location
+## train
+CD_CVIC_train_EFS_subset = subset(train_data, OTU_ID %in% TRAIN_CVIC_samples)
+CD_CVIC_train_EFS_subset = subset(CD_CVIC_train_EFS_subset, select = CD_CVIC_EFS_unique)
+rownames(CD_CVIC_train_EFS_subset) = TRAIN_CVIC_samples
+## test
+CD_CVIC_test_EFS_subset = subset(testing_data, OTU_ID %in% CD_CVIC_testing_samples)
+CD_CVIC_test_EFS_subset = subset(CD_CVIC_test_EFS_subset, select = CD_CVIC_EFS_unique)
+rownames(CD_CVIC_test_EFS_subset) = CD_CVIC_testing_samples
+
+## train
+CD_NVIC_train_EFS_subset = subset(train_data, OTU_ID %in% TRAIN_NVIC_samples)
+CD_NVIC_train_EFS_subset = subset(CD_NVIC_train_EFS_subset, select = CD_NVIC_EFS_unique)
+rownames(CD_NVIC_train_EFS_subset) = TRAIN_NVIC_samples
+## test
+CD_NVIC_test_EFS_subset = subset(testing_data, OTU_ID %in% CD_NVIC_testing_samples)
+CD_NVIC_test_EFS_subset = subset(CD_NVIC_test_EFS_subset, select = CD_NVIC_EFS_unique)
+rownames(CD_NVIC_test_EFS_subset) = CD_NVIC_testing_samples
+
+## train
+CD_NVI_train_EFS_subset = subset(train_data, OTU_ID %in% TRAIN_NVI_samples)
+CD_NVI_train_EFS_subset = subset(CD_NVI_train_EFS_subset, select = CD_NVI_EFS_unique)
+rownames(CD_NVI_train_EFS_subset) = TRAIN_NVI_samples
+## test
+CD_NVI_test_EFS_subset = subset(testing_data, OTU_ID %in% CD_NVI_testing_samples)
+CD_NVI_test_EFS_subset = subset(CD_NVI_test_EFS_subset, select = CD_NVI_EFS_unique)
+rownames(CD_NVI_test_EFS_subset) = CD_NVI_testing_samples
+
+## train
+CD_NVC_train_EFS_subset = subset(train_data, OTU_ID %in% TRAIN_NVC_samples)
+CD_NVC_train_EFS_subset = subset(CD_NVC_train_EFS_subset, select = CD_NVC_EFS_unique)
+rownames(CD_NVC_train_EFS_subset) = TRAIN_NVC_samples
+## test
+CD_NVC_test_EFS_subset = subset(testing_data, OTU_ID %in% CD_NVC_testing_samples)
+CD_NVC_test_EFS_subset = subset(CD_NVC_test_EFS_subset, select = CD_NVC_EFS_unique)
+rownames(CD_NVC_test_EFS_subset) = CD_NVC_testing_samples
+
+## train
+CD_IVC_train_EFS_subset = subset(train_data, OTU_ID %in% TRAIN_IVC_samples)
+CD_IVC_train_EFS_subset = subset(CD_IVC_train_EFS_subset, select = CD_IVC_EFS_unique)
+rownames(CD_IVC_train_EFS_subset) = TRAIN_IVC_samples
+## test
+CD_IVC_test_EFS_subset = subset(testing_data, OTU_ID %in% CD_IVC_testing_samples)
+CD_IVC_test_EFS_subset = subset(CD_IVC_test_EFS_subset, select = CD_IVC_EFS_unique)
+rownames(CD_IVC_test_EFS_subset) = CD_IVC_testing_samples
+
+## train
+CD_IVIC_train_EFS_subset = subset(train_data, OTU_ID %in% TRAIN_IVIC_samples)
+CD_IVIC_train_EFS_subset = subset(CD_IVIC_train_EFS_subset, select = CD_IVIC_EFS_unique)
+rownames(CD_IVIC_train_EFS_subset) = TRAIN_IVIC_samples
+## test
+CD_IVIC_test_EFS_subset = subset(testing_data, OTU_ID %in% CD_IVIC_testing_samples)
+CD_IVIC_test_EFS_subset = subset(CD_IVIC_test_EFS_subset, select = CD_IVIC_EFS_unique)
+rownames(CD_IVIC_test_EFS_subset) = CD_IVIC_testing_samples
+
+## Ulcer
+## train
+CDOnly_ulcer_train_EFS_subset = subset(train_data, OTU_ID %in% TRAIN_ULCER_samples)
+CDOnly_ulcer_train_EFS_subset = subset(CDOnly_ulcer_train_EFS_subset, select = CDOnly_ulcer_EFS_unique)
+rownames(CDOnly_ulcer_train_EFS_subset) = TRAIN_ULCER_samples
+## test
+CDOnly_ulcer_test_EFS_subset = subset(testing_data, OTU_ID %in% CDUlcer_testing_samples)
+CDOnly_ulcer_test_EFS_subset = subset(CDOnly_ulcer_test_EFS_subset, select = CDOnly_ulcer_EFS_unique)
+rownames(CDOnly_ulcer_test_EFS_subset) = CDUlcer_testing_samples
+
+## train
+CDCol_v_UC_train_EFS_subset = subset(train_data, OTU_ID %in% CDCol_v_UC_samples)
+CDCol_v_UC_train_EFS_subset = subset(CDCol_v_UC_train_EFS_subset, select = CDColvUC_EFS_unique)
+rownames(CDCol_v_UC_train_EFS_subset) = CDCol_v_UC_samples
+## test
+CDCol_v_UC_test_EFS_subset = subset(testing_data, OTU_ID %in% CDColvUC_testing_samples)
+CDCol_v_UC_test_EFS_subset = subset(CDCol_v_UC_test_EFS_subset, select = CDColvUC_EFS_unique)
+rownames(CDCol_v_UC_test_EFS_subset) = CDColvUC_testing_samples
+
+## train
+CDil_v_UC_train_EFS_subset = subset(train_data, OTU_ID %in% CDil_v_UC_samples)
+CDil_v_UC_train_EFS_subset = subset(CDil_v_UC_train_EFS_subset, select = CDilvUC_EFS_unique)
+rownames(CDil_v_UC_train_EFS_subset) = CDil_v_UC_samples
+## test
+CDil_v_UC_test_EFS_subset = subset(testing_data, OTU_ID %in% CDilvUC_testing_samples)
+CDil_v_UC_test_EFS_subset = subset(CDil_v_UC_test_EFS_subset, select = CDilvUC_EFS_unique)
+rownames(CDil_v_UC_test_EFS_subset) = CDilvUC_testing_samples
+```
+
+recode classifications for algos
+```{r}
+IBDvHC_train_EFS_subset$Study_group = as.numeric(revalue(IBDvHC_train_EFS_subset$Study_group, c("HC" = 0, "IBD" = 1)))
+IBDvHC_test_EFS_subset$Study_group = as.numeric(revalue(IBDvHC_test_EFS_subset$Study_group, c("HC" = 0, "IBD" = 1)))
+
+CDvUC_train_EFS_subset$Diagnosis = as.numeric(revalue(CDvUC_train_EFS_subset$Diagnosis, c("UC" = 0, "CD" = 1)))
+CDvUC_test_EFS_subset$Diagnosis = as.numeric(revalue(CDvUC_test_EFS_subset$Diagnosis, c("UC" = 0, "CD" = 1)))
+
+## severity
+SES_MIvMS_train_EFS_subset$SES_group = as.numeric(revalue(SES_MIvMS_train_EFS_subset$SES_group, c("inactive_mild" = 0, "moderate_severe" = 1)))
+SES_MIvMS_test_EFS_subset$SES_group = as.numeric(revalue(SES_MIvMS_test_EFS_subset$SES_group, c("inactive_mild" = 0, "moderate_severe" = 1)))
+
+## Inflammatory location
+CD_CVIC_train_EFS_subset$Active_Location = as.numeric(revalue(CD_CVIC_train_EFS_subset$Active_Location, c("colonic" = 0, "ileocolonic" = 1)))
+CD_CVIC_test_EFS_subset$Active_Location = as.numeric(revalue(CD_CVIC_test_EFS_subset$Active_Location, c("colonic" = 0, "ileocolonic" = 1)))
+
+CD_NVIC_train_EFS_subset$Active_Location = as.numeric(revalue(CD_NVIC_train_EFS_subset$Active_Location, c("none" = 0, "ileocolonic" = 1)))
+CD_NVIC_test_EFS_subset$Active_Location = as.numeric(revalue(CD_NVIC_test_EFS_subset$Active_Location, c("none" = 0, "ileocolonic" = 1)))
+
+CD_NVI_train_EFS_subset$Active_Location = as.numeric(revalue(CD_NVI_train_EFS_subset$Active_Location, c("none" = 0, "ileal" = 1)))
+CD_NVI_test_EFS_subset$Active_Location = as.numeric(revalue(CD_NVI_test_EFS_subset$Active_Location, c("none" = 0, "ileal" = 1)))
+
+CD_NVC_train_EFS_subset$Active_Location = as.numeric(revalue(CD_NVC_train_EFS_subset$Active_Location, c("none" = 0, "colonic" = 1)))
+CD_NVC_test_EFS_subset$Active_Location = as.numeric(revalue(CD_NVC_test_EFS_subset$Active_Location, c("none" = 0, "colonic" = 1)))
+
+CD_IVC_train_EFS_subset$Active_Location = as.numeric(revalue(CD_IVC_train_EFS_subset$Active_Location, c("ileal" = 0, "colonic" = 1)))
+CD_IVC_test_EFS_subset$Active_Location = as.numeric(revalue(CD_IVC_test_EFS_subset$Active_Location, c("ileal" = 0, "colonic" = 1)))
+
+CD_IVIC_train_EFS_subset$Active_Location = as.numeric(revalue(CD_IVIC_train_EFS_subset$Active_Location, c("ileal" = 0, "ileocolonic" = 1)))
+CD_IVIC_test_EFS_subset$Active_Location = as.numeric(revalue(CD_IVIC_test_EFS_subset$Active_Location, c("ileal" = 0, "ileocolonic" = 1)))
+
+## Ulcer
+CDOnly_ulcer_train_EFS_subset$Ulcer_group = as.numeric(revalue(CDOnly_ulcer_train_EFS_subset$Ulcer_group, c("rem_mild" = 0, "mod_sev" = 1)))
+CDOnly_ulcer_test_EFS_subset$Ulcer_group = as.numeric(revalue(CDOnly_ulcer_test_EFS_subset$Ulcer_group, c("rem_mild" = 0, "mod_sev" = 1)))
+
+## CD Colonic vs UC
+CDCol_v_UC_train_EFS_subset$Diagnosis = as.numeric(revalue(CDCol_v_UC_train_EFS_subset$Diagnosis, c("UC" = 0, "CD" = 1)))
+CDCol_v_UC_test_EFS_subset$Diagnosis= as.numeric(revalue(CDCol_v_UC_test_EFS_subset$Diagnosis, c("UC" = 0, "CD" = 1)))
+
+## CD Ileal vs UC
+CDil_v_UC_train_EFS_subset$Diagnosis = as.numeric(revalue(CDil_v_UC_train_EFS_subset$Diagnosis, c("UC" = 0, "CD" = 1)))
+CDil_v_UC_test_EFS_subset$Diagnosis= as.numeric(revalue(CDil_v_UC_test_EFS_subset$Diagnosis, c("UC" = 0, "CD" = 1)))
+```
+
+create splits dir and write text files
+```{r}
+dir.create("EFS_selected_data_sets")
+dir.create("EFS_selected_data_sets/CDvUC")
+dir.create("EFS_selected_data_sets/Severity")
+dir.create("EFS_selected_data_sets/Location")
+dir.create("EFS_selected_data_sets/Ulcer")
+dir.create("EFS_selected_data_sets/IBDvHC")
+
+## IBD  v healthy info
+write.csv(IBDvHC_train_EFS_subset, "EFS_selected_data_sets/IBDvHC/IBDvHC_train_EFS_selected.csv", row.names = F)
+write.csv(IBDvHC_test_EFS_subset, "EFS_selected_data_sets/IBDvHC/IBDvHC_test_EFS_selected.csv", row.names = F)
+
+## CD location info
+write.csv(CDvUC_train_EFS_subset, "EFS_selected_data_sets/CDvUC/CDvUC_train_EFS_selected.csv", row.names = F)
+write.csv(CDvUC_test_EFS_subset, "EFS_selected_data_sets/CDvUC/CDvUC_test_EFS_selected.csv", row.names = F)
+
+write.csv(CD_CVIC_train_EFS_subset, "EFS_selected_data_sets/Location/CD_CVIC_train_EFS_selected.csv", row.names = F)
+write.csv(CD_CVIC_test_EFS_subset, "EFS_selected_data_sets/Location/CD_CVIC_test_EFS_selected.csv", row.names = F)
+
+write.csv(CD_IVC_train_EFS_subset, "EFS_selected_data_sets/Location/CD_IVC_train_EFS_selected.csv", row.names = F)
+write.csv(CD_IVC_test_EFS_subset, "EFS_selected_data_sets/Location/CD_IVC_test_EFS_selected.csv", row.names = F)
+
+write.csv(CD_IVIC_train_EFS_subset, "EFS_selected_data_sets/Location/CD_IVIC_train_EFS_selected.csv", row.names = F)
+write.csv(CD_IVIC_test_EFS_subset, "EFS_selected_data_sets/Location/CD_IVIC_test_EFS_selected.csv", row.names = F)
+
+write.csv(CD_NVI_train_EFS_subset, "EFS_selected_data_sets/Location/CD_NVI_train_EFS_selected.csv", row.names = F)
+write.csv(CD_NVI_test_EFS_subset, "EFS_selected_data_sets/Location/CD_NVI_test_EFS_selected.csv", row.names = F)
+
+write.csv(CD_NVC_train_EFS_subset, "EFS_selected_data_sets/Location/CD_NVC_train_EFS_selected.csv", row.names = F)
+write.csv(CD_NVC_test_EFS_subset, "EFS_selected_data_sets/Location/CD_NVC_test_EFS_selected.csv", row.names = F)
+
+write.csv(CD_NVIC_train_EFS_subset, "EFS_selected_data_sets/Location/CD_NVIC_train_EFS_selected.csv", row.names = F)
+write.csv(CD_NVIC_test_EFS_subset, "EFS_selected_data_sets/Location/CD_NVIC_test_EFS_selected.csv", row.names = F)
+
+## ulcer class info
+write.csv(CDOnly_ulcer_train_EFS_subset, "EFS_selected_data_sets/Ulcer/CDOnly_ulcer_train_EFS_selected.csv", row.names = F)
+write.csv(CDOnly_ulcer_test_EFS_subset, "EFS_selected_data_sets/Ulcer/CDOnly_ulcer_test_EFS_selected.csv", row.names = F)
+
+## UC vs CD colonic/ileal
+write.csv(CDCol_v_UC_train_EFS_subset, "EFS_selected_data_sets/CDvUC/CDCol_v_UC_train_EFS_selected.csv", row.names = F)
+write.csv(CDCol_v_UC_test_EFS_subset, "EFS_selected_data_sets/CDvUC/CDCol_v_UC_test_EFS_selected.csv", row.names = F)
+
+write.csv(CDil_v_UC_train_EFS_subset, "EFS_selected_data_sets/CDvUC/CDil_v_UC_train_EFS_selected.csv", row.names = F)
+write.csv(CDil_v_UC_test_EFS_subset, "EFS_selected_data_sets/CDvUC/CDil_v_UC_test_EFS_selected.csv", row.names = F)
+
+## SES Group
+write.csv(SES_MIvMS_train_EFS_subset, "EFS_selected_data_sets/Severity/SES_MIvMS_train_EFS_selected.csv", row.names = F)
+write.csv(SES_MIvMS_test_EFS_subset, "EFS_selected_data_sets/Severity/SES_MIvMS_test_EFS_selected.csv", row.names = F)
+```
+
+
+```{r}
+##!!!
+```
+
