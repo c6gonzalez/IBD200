@@ -1,0 +1,355 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+```{r}
+library(Hmisc)
+library(psych)
+library(gplots)
+library(RColorBrewer)
+library(corrplot)
+library(matrixTests)
+library(ggplot2)
+library(car)
+library(dplyr)
+library(stringr)
+```
+load function
+```{r}
+flattenCorrMatrix <- function(cormat, pmat){
+  ut = upper.tri(cormat)
+  data.frame(
+    row = rownames(cormat)[row(cormat)[ut]],
+    column = rownames(cormat)[col(cormat)[ut]],
+    cor = cormat[ut],
+    p = pmat[ut]
+  )
+}
+
+
+
+flattenCorrMatrix <- function(cormat, pmat) {
+  ut <- upper.tri(cormat)
+  data.frame(
+    row = rownames(cormat)[row(cormat)[ut]],
+    column = rownames(cormat)[col(cormat)[ut]],
+    cor  =(cormat)[ut],
+    p = pmat[ut]
+  )
+}
+```
+
+
+import data
+```{r}
+all_data = read.csv("all_data_for_R.csv")
+neutrophil_proteins = read.csv("neutrophil_proteins.csv")
+```
+subset data
+```{r}
+CD_only = subset(all_data, Diagnosis =="CD")
+UC_only = subset(all_data, Diagnosis =="UC")
+```
+
+
+```{r}
+CD_data = CD_only[,14:ncol(CD_only)]
+UC_data = CD_only[,14:ncol(UC_only)]
+
+CD_SES = CD_only$SES_CD_Score
+CDAI = CD_only$CDAI
+
+CD_OTUS = CD_only$OTU_ID
+
+```
+
+```{r}
+CDAI_data = cbind(CDAI, CD_data)
+rownames(CDAI_data) = CD_OTUS
+```
+
+
+```{r}
+ICD = subset(CD_only, Active_Location == "ileal")
+CCD = subset(CD_only, Active_Location == "colonic")
+ICCD = subset(CD_only, Active_Location == "ileocolonic")
+```
+
+```{r}
+ICD_data_only = ICD[,14:ncol(ICD)]
+CCD_data_only = CCD[,14:ncol(CCD)]
+ICCD_data_only = ICCD[,14:ncol(ICCD)]
+
+ICD_OTUS = ICD$OTU_ID
+CCD_OTUS = CCD$OTU_ID
+ICCD_OTUS = ICCD$OTU_ID
+
+ICD_SES = ICD$SES_CD_Score
+ICD_CDAI = ICD$CDAI
+
+CCD_SES = CCD$SES_CD_Score
+CCD_CDAI = CCD$CDAI
+
+ICCD_SES = ICCD$SES_CD_Score
+ICCD_CDAI = ICCD$CDAI
+
+ICD_SES_data = cbind(ICD_SES, ICD_data_only)
+rownames(ICD_SES_data) = ICD_OTUS
+ICD_CDAI_data = cbind(ICD_CDAI, ICD_data_only)
+rownames(ICD_CDAI_data) = ICD_OTUS
+
+CCD_SES_data = cbind(CCD_SES, CCD_data_only)
+rownames(CCD_SES_data) = CCD_OTUS
+CCD_CDAI_data = cbind(CCD_CDAI, CCD_data_only)
+rownames(CCD_CDAI_data) = CCD_OTUS
+
+ICCD_SES_data = cbind(ICCD_SES, ICCD_data_only)
+rownames(ICCD_SES_data) = ICCD_OTUS
+ICCD_CDAI_data = cbind(ICCD_CDAI, ICCD_data_only)
+rownames(ICCD_CDAI_data) = ICCD_OTUS
+
+```
+
+```{r}
+ICD_SES_data = as.matrix(ICD_SES_data)
+ICD_CDAI_data = as.matrix(ICD_CDAI_data)
+
+CCD_SES_data = as.matrix(CCD_SES_data)
+CCD_CDAI_data = as.matrix(CCD_CDAI_data)
+
+ICCD_SES_data = as.matrix(ICCD_SES_data)
+ICCD_CDAI_data = as.matrix(ICCD_CDAI_data)
+```
+
+```{r}
+#ileal
+ICD_SES_corr = rcorr(ICD_SES_data, type = "spearman")
+ICD_CDAI_corr = rcorr(ICD_CDAI_data, type = "spearman")
+#colonic
+CCD_SES_corr = rcorr(CCD_SES_data, type = "spearman")
+CCD_CDAI_corr = rcorr(CCD_CDAI_data, type = "spearman")
+#ileocolonic
+ICCD_SES_corr = rcorr(ICCD_SES_data, type = "spearman")
+ICCD_CDAI_corr = rcorr(ICCD_CDAI_data, type = "spearman")
+
+```
+
+```{r}
+ICD_SES_flat = flattenCorrMatrix(ICD_SES_corr$r, ICD_SES_corr$P)
+ICD_SES_flat$padjust = p.adjust(ICD_SES_flat$p, method = "fdr")
+ICD_SES_sig = subset(ICD_SES_flat, row == "ICD_SES" & ICD_SES_flat$p < 0.05)
+
+CCD_SES_flat = flattenCorrMatrix(CCD_SES_corr$r, CCD_SES_corr$P)
+CCD_SES_flat$padjust = p.adjust(CCD_SES_flat$p, method = "fdr")
+CCD_SES_sig = subset(CCD_SES_flat, row == "CCD_SES" & CCD_SES_flat$p < 0.05)
+
+ICCD_SES_flat = flattenCorrMatrix(ICCD_SES_corr$r, ICCD_SES_corr$P)
+ICCD_SES_flat$padjust = p.adjust(ICCD_SES_flat$p, method = "fdr")
+ICCD_SES_sig = subset(ICCD_SES_flat, row == "ICCD_SES" & ICCD_SES_flat$p < 0.05)
+
+ICD_CDAI_flat = flattenCorrMatrix(ICD_CDAI_corr$r, ICD_CDAI_corr$P)
+ICD_CDAI_flat$padjust = p.adjust(ICD_CDAI_flat$p, method = "fdr")
+ICD_CDAI_sig = subset(ICD_CDAI_flat, row == "ICD_CDAI" & ICD_CDAI_flat$p < 0.05)
+
+CCD_CDAI_flat = flattenCorrMatrix(CCD_CDAI_corr$r, CCD_CDAI_corr$P)
+CCD_CDAI_flat$padjust = p.adjust(CCD_CDAI_flat$p, method = "fdr")
+CCD_CDAI_sig = subset(CCD_CDAI_flat, row == "CCD_CDAI" & CCD_CDAI_flat$p < 0.05)
+
+ICCD_CDAI_flat = flattenCorrMatrix(ICCD_CDAI_corr$r, ICCD_CDAI_corr$P)
+ICCD_CDAI_flat$padjust = p.adjust(ICCD_CDAI_flat$p, method = "fdr")
+ICCD_CDAI_sig = subset(ICCD_CDAI_flat, row == "ICCD_CDAI" & ICCD_CDAI_flat$p < 0.05)
+
+
+```
+
+```{r}
+write.csv(ICD_SES_sig, "Ileal_SES_sig.csv")
+write.csv(ICD_CDAI_sig, "Ileal_CDAI_sig.csv")
+
+write.csv(CCD_SES_sig, "colonic_SES_sig.csv")
+write.csv(CCD_CDAI_sig, "colonic_CDAI_sig.csv")
+
+write.csv(ICCD_SES_sig, "Ileocolonic_SES_sig.csv")
+write.csv(ICCD_CDAI_sig, "Ileocolonic_CDAI_sig.csv")
+```
+
+```{r}
+ICCD_CDAI_feats = data.frame(CDAI = ICCD_CDAI_sig$column)
+ICCD_SES_feats = ICCD_SES_sig$column
+ICCD_inf_common_feats = subset(ICCD_CDAI_feats, CDAI %in% ICCD_SES_feats)
+
+```
+
+```{r}
+ileal_CD = subset(CD_IVC, active_loc == 1)
+colonic_CD = subset(CD_IVC, active_loc == 1)
+ileal_CD = subset(CD_IVC, active_loc == 0)
+
+ileal_CD$active_loc = NULL
+colonic_CD$active_loc = NULL
+
+IVC_test = col_t_welch(ileal_CD, colonic_CD)
+
+IVC_sig = subset(IVC_test, pvalue < 0.05)
+IVC_sig$padjust = p.adjust(IVC_sig, method = "fdr")
+
+IVC_sig$log2FC = log2(IVC_sig$mean.x/IVC_sig$mean.y)
+```
+
+
+```{r}
+features = read.delim(pipe("pbpaste"))
+```
+
+```{r}
+feats = rownames(IVC_sig)
+IVC_sig$feats = feats
+```
+
+```{r}
+IVC_sig = merge(IVC_sig, features, by.x = "feats", by.y = "ID")
+```
+
+```{r}
+IVC_sig_taxa = str_split_fixed(IVC_sig$taxa, "; g__", 2)
+IVC_sig_taxa = str_split_fixed(IVC_sig_taxa[,2], "; s__",2)
+IVC_sig_taxa = as.data.frame(IVC_sig_taxa)
+IVC_sig_taxa$V2 = NULL
+IVC_sig_taxa$V1[IVC_sig_taxa$V1 == ""] = "UNKorNA"
+colnames(IVC_sig_taxa) = "genus"
+
+IVC_bifido = cbind(IVC_sig,IVC_sig_taxa)
+bifido = subset(IVC_sig, genus == "Bifidobacterium")
+```
+
+
+```{r}
+UC = subset(all_data, Diagnosis == "UC")
+CCD = subset(all_data, Active_Location == "colonic")
+
+UC_data = UC[,9:ncol(UC)]
+rownames(UC_data) = UC$OTU_ID
+CCD_data = CCD[,9:ncol(CCD)]
+rownames(CCD_data) = CCD$OTU_ID
+
+UC_CCD_test = col_t_welch(CCD_data, UC_data)
+
+UC_CCD_sig = subset(UC_CCD_test, pvalue < 0.05)
+UC_CCD_sig$padjust = p.adjust(UC_CCD_sig$pvalue, method = "fdr")
+
+UC_CCD_sig$log2FC = log2(UC_CCD_sig$mean.x/UC_CCD_sig$mean.y)
+
+```
+
+function for subsetting microbial features
+```{r}
+## import features and taxa
+taxa_sub = function(dataset1, dataset2, feature_name = "feature"){
+  sig_all = col_t_welch(dataset1, dataset2)
+  sig_all = subset(sig_all, pvalue < 0.05)
+  sig_all$padjust = p.adjust(sig_all$pvalue, method = "fdr")
+  sig_all$log2FC = log2(sig_all$mean.x/sig_all$mean.y)
+  sig_feats = rownames(sig_all)
+  sig_all$feats = sig_feats
+  sig_all =  merge(sig_all, features, by.x = "feats", by.y = "ID")
+  # split taxa
+  sig_taxa = str_split_fixed(sig_all$taxa, "; g__", 2)
+  sig_taxa = str_split_fixed(sig_taxa[,2], "; s__",2)
+  sig_taxa = as.data.frame(sig_taxa)
+  sig_taxa$V2 = NULL
+  sig_taxa$V1[sig_taxa$V1 == ""] = "UNKorNA"
+  colnames(sig_taxa) = "genus"
+  taxaIO = cbind(sig_all,sig_taxa)
+  taxaIO_subset = subset(taxaIO, genus == feature_name)
+  return(taxaIO_subset)
+}
+```
+
+```{r}
+
+```
+
+
+UpSetR plot
+```{r}
+library(UpSetR)
+all_data_binary = read.delim(pipe("pbpaste"),row.names = 1)
+```
+
+```{r}
+all_data_2 = read.delim(pipe("pbpaste"), row.names = 1)
+```
+
+```{r}
+upset(all_data_binary, order.by = "freq")
+```
+
+```{r}
+upset(all_data_2, order.by = "freq")
+```
+
+
+```{r}
+data_only = all_data[,14:ncol(all_data)]
+rownames(data_only) = all_data$OTU_ID
+```
+
+```{r}
+prots = data.frame(all_prots = colnames(data_only))
+neutrophil_data = subset(data_only, select = neutrophil_proteins$protein)
+neutrophil_data = as.matrix(neutrophil_data)
+```
+
+```{r}
+locs = as.data.frame(all_data$Active_Location)
+color = rep(NA, length=length(locs$`all_data$Active_Location`))
+color[which(locs$`all_data$Active_Location`=="ileal")] = "green"
+color[which(locs$`all_data$Active_Location`=="colonic")] = "orange"
+color[which(locs$`all_data$Active_Location`=="ileocolonic")] = "red"
+color[which(locs$`all_data$Active_Location`=="none")] = "cyan"
+color[which(locs$`all_data$Active_Location`=="control")] = "blue"
+color[which(locs$`all_data$Active_Location`=="UC")] = "pink"
+
+hcolors = colorRampPalette(c("cyan", "black", "yellow")) (n=20)
+heatmap.2(neutrophil_data, trace = "none", scale = "column", Rowv = F, col = hcolors, cexRow = 0.4, cexCol = 0.4, RowSideColors = color)
+
+```
+
+
+```{r}
+SES_group = data.frame(SES = all_data$SES_group2)
+color = rep(NA, length=length(SES_group$SES))
+color[which(SES_group$SES=="mild")] = "green"
+color[which(SES_group$SES=="moderate")] = "orange"
+color[which(SES_group$SES=="severe")] = "red"
+color[which(SES_group$SES=="inactive")] = "cyan"
+color[which(SES_group$SES==0)] = "blue"
+
+hcolors = colorRampPalette(c("cyan", "black", "yellow")) (n=20)
+heatmap.2(neutrophil_data, trace = "none", scale = "column", Rowv = F, col = hcolors, cexRow = 0.4, cexCol = 0.4, RowSideColors = color)
+
+```
+
+```{r}
+UCEIS_group = data.frame(SES = all_data$UCEIS)
+color = rep(NA, length=length(UCEIS_group$SES))
+color[which(UCEIS_group$SES==0)] = "blue"
+color[which(UCEIS_group$SES==1)] = "cyan"
+color[which(UCEIS_group$SES==2)] = "green"
+color[which(UCEIS_group$SES==3)] = "yellow"
+color[which(UCEIS_group$SES==4)] = "orange"
+color[which(UCEIS_group$SES==5)] = "red"
+color[which(UCEIS_group$SES==6)] = "magenta"
+color[which(UCEIS_group$SES==7)] = "purple"
+
+
+
+hcolors = colorRampPalette(c("cyan", "black", "yellow")) (n=20)
+heatmap.2(neutrophil_data, trace = "none", scale = "column", Rowv = F, col = hcolors, cexRow = 0.4, cexCol = 0.4, RowSideColors = color)
+```
+

@@ -1,0 +1,87 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+```{r}
+library(Hmisc)
+library(psych)
+library(gplots)
+library(RColorBrewer)
+library(corrplot)
+library(matrixTests)
+library(ggplot2)
+library(car)
+library(DataCombine)
+library(stringr)
+library(tidyverse)
+```
+
+```{r}
+location_stats = read.delim("ICCDvColonicvICD.txt", sep = "\t")
+feature_metadata = read.delim(pipe("pbpaste")) ## pasted from all_features.xlsx
+```
+
+```{r}
+location_tibble = as_tibble(location_stats)
+test = location_tibble %>% arrange(desc(location_tibble$Colonic.CCD.and.UC.vICCD))
+```
+
+
+```{r}
+top20 = test[1:20,]
+bottom20 = test[5706:5725,]
+topbottom20 = rbind(top20,bottom20)
+topbottom20 = as.data.frame(topbottom20)
+
+```
+
+```{r}
+ggplot(topbottom20, aes(fct_reorder(featureid, Colonic.CCD.and.UC.vICCD),Colonic.CCD.and.UC.vICCD)) + geom_col() +coord_flip()
+```
+
+```{r}
+test2 = location_tibble %>% arrange(desc(location_tibble$ICDvICCD))
+top20 = test2[1:20,]
+bottom20 = test2[5706:5725,]
+topbottom20 = rbind(top20,bottom20)
+topbottom20 = as.data.frame(topbottom20)
+
+
+ggplot(topbottom20, aes(fct_reorder(featureid, ICDvICCD),ICDvICCD)) + geom_col() +coord_flip() + theme_classic()
+```
+
+
+Same analysis but with only CCD instead of UC/CCD combo
+```{r}
+location_stats = read.csv("ICDandCCDvICCD.txt", sep = "\t")
+```
+
+```{r}
+location_tibble = as_tibble(location_stats)
+test = location_tibble %>% arrange(desc(location_tibble$ICDvICCD))
+
+top20 = test[1:20,]
+bottom20 = test[(nrow(test)-19):nrow(test),]
+topbottom20 = rbind(top20,bottom20)
+topbottom20 = as.data.frame(topbottom20)
+
+ggplot(topbottom20, aes(fct_reorder(featureid, ICDvICCD),ICDvICCD)) + geom_col() +coord_flip()
+```
+
+```{r}
+location_tibble = as_tibble(location_stats)
+test = location_tibble %>% arrange(desc(location_tibble$CCDvICCD))
+
+top20 = test[1:20,]
+bottom20 = test[(nrow(test)-19):nrow(test),]
+topbottom20 = rbind(top20,bottom20)
+topbottom20 = as.data.frame(topbottom20)
+
+ggplot(topbottom20, aes(fct_reorder(featureid, CCDvICCD),CCDvICCD)) + geom_col() +coord_flip() + theme_classic()
+```
+

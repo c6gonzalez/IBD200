@@ -1,0 +1,86 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+```{r}
+library(Hmisc)
+library(psych)
+library(gplots)
+library(RColorBrewer)
+library(corrplot)
+library(matrixTests)
+library(ggplot2)
+library(dplyr)
+```
+import data
+```{r}
+all_data = read.delim(pipe("pbpaste"), row.names = 1)
+```
+subset diff sets
+```{r}
+ileal = subset(all_data, Active_Location == "ileal")
+colonic = subset(all_data, Active_Location == "colonic")
+UC = subset(all_data, Diagnosis == "UC")
+
+ileal = ileal[,3:ncol(ileal)]
+colonic = colonic[,3:ncol(colonic)]
+UC = UC[,3:ncol(UC)]
+```
+
+do stats and add fold change
+```{r}
+IVUC = col_t_welch(ileal, UC)
+CVUC = col_t_welch(colonic, UC)
+
+IVUC$padjust = p.adjust(IVUC$pvalue, method = "fdr")
+CVUC$padjust = p.adjust(CVUC$pvalue, method = "fdr")
+
+IVUC$FC = log2(IVUC$mean.x/IVUC$mean.y)
+CVUC$FC = log2(CVUC$mean.x/CVUC$mean.y)
+
+```
+
+
+```{r}
+write.csv(IVUC, "ileal_v_UC_sig.csv")
+write.csv(CVUC, "colonic_v_UC_sig.csv")
+```
+
+```{r}
+col_il_UC = subset(all_data, Active_Location == "colonic" | Active_Location == "ileal" | Diagnosis == "UC")
+col_il_UC_new = col_il_UC %>%
+  mutate(Active_Location = replace(Active_Location, Active_Location == "UC", 3)) %>%
+  mutate(Active_Location = replace(Active_Location, Active_Location == "colonic", 2)) %>%
+  mutate(Active_Location = replace(Active_Location, Active_Location == "ileal", 1))
+
+samp_key = col_il_UC_new$Active_Location
+
+col_il_UC_mat = as.matrix(col_il_UC[,3:ncol(col_il_UC)])
+```
+
+```{r}
+col_il_UC_stats = col_oneway_welch(col_il_UC_mat, samp_key)
+```
+```{r}
+col_il_UC_stats$padjust = p.adjust(col_il_UC_stats$pvalue, method = "fdr")
+```
+
+```{r}
+col_il_UC_sig_only = subset(col_il_UC_stats, pvalue < 0.002)
+sig_feats_only = rownames(col_il_UC_sig_only)
+```
+
+```{r}
+col_il_UC_sig_data = subset(col_il_UC_mat, select = sig_feats_only)
+```
+
+```{r}
+hcolors = colorRampPalette(c("cyan", "black", "yellow")) (n=20)
+heatmap.2(col_il_UC_sig_data, trace = "none", scale = "column", col = hcolors, cexRow = 0.3, cexCol = 0.3, RowSideColors = samp_key, Rowv = F)
+```
+

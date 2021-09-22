@@ -1,0 +1,31 @@
+---
+title: "SES and UCEIS Density breakdown"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+```{r}
+library(ggplot2)
+```
+
+```{r}
+CD_density = read.delim(pipe("pbpaste"))
+```
+
+```{r}
+ggplot(CD_density, aes(x=SES)) + geom_density() + theme_bw()
+ggsave("CD_density.pdf")
+```
+
+```{r}
+UC_data = read.delim(pipe("pbpaste"))
+```
+
+```{r}
+ggplot(UC_data, aes(x=Pmayo)) + geom_density() + theme_bw()
+ggsave("UC_density.pdf")
+```
+

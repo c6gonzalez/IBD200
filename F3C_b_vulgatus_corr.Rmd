@@ -1,0 +1,82 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+```{r, results='hide'}
+library(Hmisc)
+library(psych)
+library(gplots)
+library(RColorBrewer)
+library(corrplot)
+library(matrixTests)
+library(ggplot2)
+library(car)
+library(DataCombine)
+library(stringr)
+library(tidyverse)
+```
+
+
+```{r}
+flattenCorrMatrix = function(cormat, pmat){
+  ut = upper.tri(cormat)
+  data.frame(
+    row = rownames(cormat)[row(cormat)[ut]],
+    column = rownames(cormat)[col(cormat)[ut]],
+    cor = cormat[ut],
+    p = pmat[ut]
+  )
+}
+```
+
+Imported (pasted) both normal counts and log of Bvulgatus in metagenomic data along with location and severity
+```{r}
+BV = read.delim(pipe("pbpaste"), row.names = 1)
+```
+
+
+```{r}
+BV_data = BV[,2:ncol(BV)]
+BV_data = as.matrix(BV_data)
+BVcorr = rcorr(BV_data, type = "spearman")
+
+BV_CCD = subset(BV, Active_Location == "colonic")
+BV_ICD = subset(BV, Active_Location == "ileal")
+BV_ICCD = subset(BV, Active_Location == "ileocolonic")
+
+BV_CCD_data = as.matrix(BV_CCD[,2:ncol(BV_CCD)])
+BV_ICD_data = as.matrix(BV_ICD[,2:ncol(BV_ICD)])
+BV_ICCD_data = as.matrix(BV_ICCD[,2:ncol(BV_ICCD)])
+
+BVcorr_ICD = rcorr(BV_ICD_data, type = "spearman")
+BVcorr_CCD = rcorr(BV_CCD_data, type = "spearman")
+BVcorr_ICCD = rcorr(BV_ICCD_data, type = "spearman")
+
+```
+
+```{r}
+BV_ICD_flat = flattenCorrMatrix(BVcorr_ICD$r, BVcorr_ICD$P)
+BV_CCD_flat = flattenCorrMatrix(BVcorr_CCD$r, BVcorr_CCD$P)
+BV_ICCD_flat = flattenCorrMatrix(BVcorr_ICCD$r, BVcorr_ICCD$P)
+```
+
+```{r}
+BV_ICD_SES = subset(BV_ICD_flat, row == "SES_CD_Score")
+BV_CCD_SES = subset(BV_CCD_flat, row == "SES_CD_Score")
+BV_ICCD_SES = subset(BV_ICCD_flat, row == "SES_CD_Score")
+```
+
+```{r}
+ggplot(data = BV, aes(x = SES_CD_Score, y = BV, colour = Active_Location)) +geom_point() +geom_smooth(method = "lm", se = F) + theme_classic()
+```
+
+```{r}
+test = corr.test(x = BV_ICD_data[,1], BV_ICD_data[,2], method = "spearman")
+ggplot(BV_ICD, aes(x = SES_CD_Score, y = BV)) + geom_point()+geom_smooth(method = "lm", se = F) + theme_classic()
+```
+

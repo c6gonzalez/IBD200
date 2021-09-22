@@ -1,0 +1,148 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+```{r}
+library(Hmisc)
+library(psych)
+library(gplots)
+library(RColorBrewer)
+library(corrplot)
+library(matrixTests)
+library(ggplot2)
+library(car)
+library(dplyr)
+library(stringr)
+```
+
+
+```{r}
+#main data
+all_data = read.csv("all_data_for_R.csv")
+bile_feats = read.csv("bile_acids.csv")
+#supp feats
+features = read.csv("all_features_R.csv")
+```
+
+
+```{r}
+bile_raw = subset(all_data, Active_Location == "ileal" | Active_Location == "colonic" | Active_Location == "ileocolonic" )
+bile_data = subset(bile_raw, select = bile_feats$ID)
+rownames(bile_data) = bile_raw$OTU_ID
+bile_data_t = as.data.frame(t(bile_data))
+bile_data_t$total = colSums(bile_data)
+bile_data_t = subset(bile_data_t, !(total == 0))
+bile_data_t$total = NULL
+bile_data = as.data.frame(t(bile_data_t))
+bile_data_mat = as.matrix(bile_data)
+```
+
+```{r}
+hcolors = colorRampPalette(c("cyan", "black", "yellow")) (n=20)
+locs = data.frame(location = bile_raw$Active_Location)
+color = rep(NA, length=length(locs$location))
+color[which(locs$location =="ileal")] = "green"
+color[which(locs$location =="colonic")] = "orange"
+color[which(locs$location =="ileocolonic")] = "red"
+
+heatmap.2(bile_data_mat, scale = "column", trace = "none", col = hcolors, cexRow = 0.2, cexCol = 0.2, Rowv = F, RowSideColors = color)
+```
+
+```{r}
+ICD = subset(all_data, Active_Location == "ileal")
+CCD = subset(all_data, Active_Location == "colonic")
+ICCD = subset(all_data, Active_Location == "ileocolonic")
+
+ICD = subset(ICD, select = bile_feats$ID)
+CCD = subset(CCD, select = bile_feats$ID)
+ICCD = subset(ICCD, select = bile_feats$ID)
+
+ICD_mat = as.matrix(ICD)
+CCD_mat = as.matrix(CCD)
+ICCD_mat = as.matrix(ICCD)
+
+```
+
+```{r}
+IVC_bile = col_t_welch(ICD_mat,CCD_mat)
+IVIC_bile = col_t_welch(ICD_mat, ICCD_mat)
+CVIC_bile = col_t_welch(CCD_mat, ICCD_mat)
+```
+
+```{r}
+IVC_bile$log2FC = log2(IVC_bile$mean.x/IVC_bile$mean.y)
+IVIC_bile$log2FC = log2(IVIC_bile$mean.x/IVIC_bile$mean.y)
+CVIC_bile$log2FC = log2(CVIC_bile$mean.x/CVIC_bile$mean.y)
+
+IVC_bile$feat = rownames(IVC_bile)
+IVIC_bile$feat = rownames(IVIC_bile)
+CVIC_bile$feat = rownames(CVIC_bile)
+```
+
+```{r}
+# add a column of NAs
+IVIC_bile$diffexpressed = "NO"
+# if log2Foldchange > 0.6 and pvalue < 0.05, set as "UP" 
+IVIC_bile$diffexpressed[IVIC_bile$log2FC > 1 & IVIC_bile$pvalue < 0.05] <- "UP"
+# if log2Foldchange < -0.6 and pvalue < 0.05, set as "DOWN"
+IVIC_bile$diffexpressed[IVIC_bile$log2FC < -1 & IVIC_bile$pvalue < 0.05] <- "DOWN"
+#make diff expressed column
+IVIC_bile$delabel = NA
+IVIC_bile$delabel[IVIC_bile$diffexpressed != "NO"] = IVIC_bile$feat[IVIC_bile$diffexpressed != "NO"]
+
+ggplot(IVIC_bile, aes(x = log2FC, y = -log(pvalue), col = diffexpressed, label = delabel)) +
+  geom_point() +
+  theme_classic() +
+  geom_hline(yintercept = -log(0.05)) +
+  geom_vline(xintercept = c(-1,1)) +
+  geom_text(size = 3, nudge_x = 1.5) +
+  xlim(-15,15) + 
+  ylim(0,7)
+```
+
+
+```{r}
+# add a column of NAs
+IVC_bile$diffexpressed = "NO"
+# if log2Foldchange > 0.6 and pvalue < 0.05, set as "UP" 
+IVC_bile$diffexpressed[IVC_bile$log2FC > 1 & IVC_bile$pvalue < 0.05] <- "UP"
+# if log2Foldchange < -0.6 and pvalue < 0.05, set as "DOWN"
+IVC_bile$diffexpressed[IVC_bile$log2FC < -1 & IVC_bile$pvalue < 0.05] <- "DOWN"
+#make diff expressed column
+IVC_bile$delabel = NA
+IVC_bile$delabel[IVC_bile$diffexpressed != "NO"] = IVC_bile$feat[IVC_bile$diffexpressed != "NO"]
+
+ggplot(IVC_bile, aes(x = log2FC, y = -log(pvalue), col = diffexpressed, label = delabel)) +
+  geom_point() +
+  theme_classic() +
+  geom_hline(yintercept = -log(0.05)) +
+  geom_vline(xintercept = c(-1,1)) +
+  geom_text(size = 3, nudge_x = 1.5) +
+  xlim(-15,15) +
+  ylim(0,7)
+```
+
+
+```{r}
+# add a column of NAs
+CVIC_bile$diffexpressed = "NO"
+# if log2Foldchange > 0.6 and pvalue < 0.05, set as "UP" 
+CVIC_bile$diffexpressed[CVIC_bile$log2FC > 1 & CVIC_bile$pvalue < 0.05] <- "UP"
+# if log2Foldchange < -0.6 and pvalue < 0.05, set as "DOWN"
+CVIC_bile$diffexpressed[CVIC_bile$log2FC < -1 & CVIC_bile$pvalue < 0.05] <- "DOWN"
+#make diff expressed column
+CVIC_bile$delabel = NA
+CVIC_bile$delabel[CVIC_bile$diffexpressed != "NO"] = CVIC_bile$feat[CVIC_bile$diffexpressed != "NO"]
+
+ggplot(CVIC_bile, aes(x = log2FC, y = -log(pvalue), col = diffexpressed, label = delabel)) +
+  geom_point() +
+  theme_classic() +
+  geom_hline(yintercept = -log(0.05)) +
+  geom_vline(xintercept = c(-1,1)) +
+  geom_text(size = 3, nudge_x = 1.5) +
+  xlim(-15,15) + 
+  ylim(0,7)
+```
+
